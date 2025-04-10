@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify
 import random
 from collections import deque
-
+import os
 app = Flask(__name__)
 
 # Simulated pipeline data
@@ -51,5 +51,8 @@ def index():
 def get_data():
     return jsonify(simulate_pipeline())
 
+
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Use PORT env variable or fallback to 5000
+    app.run(host='0.0.0.0', port=port, debug=True)

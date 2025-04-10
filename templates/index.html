@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CPU Pipeline Performance Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+  <style>
+    .dashboard-container {
+      padding: 20px;
+      position: relative;
+    }
+    .info-card {
+  position: absolute;
+  top: 1px; /* moved up */
+  right: 20px;
+  z-index: 1000; /* higher so it stays above other elements */
+  background: #cbcbcb;
+  border: none;
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.1);
+  min-width: 150px;
+}
+    .metric-card {
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .stage-utilization {
+      height: 300px;
+    }
+    .historical-chart {
+      height: 300px;
+    }
+    .pipeline-visual {
+      display: flex;
+      justify-content: space-between;
+      margin: 20px 0;
+      height: 100px;
+    }
+    .pipeline-stage {
+      flex: 1;
+      border: 1px solid #ddd;
+      margin: 0 2px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 4px;
+    }
+    .pipeline-fill {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      background-color: #4CAF50;
+      transition: height 0.5s;
+    }
+    .stage-label {
+      position: absolute;
+      bottom: -25px;
+      width: 100%;
+      text-align: center;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <!-- Top-right info card -->
+    <div class="card info-card">
+      <div class="card-body p-3">
+        <h6 class="fw-bold mb-1">Aravind Marripudi</h6>
+        <p class="mb-1 text-muted" style="font-size: 0.9rem;">Reg No: 23BCE7677</p>
+        <p class="mb-1 text-muted" style="font-size: 0.9rem;">Slot: A1</p>
+        <p class="mb-0 text-muted" style="font-size: 0.9rem;">Faculty: Prof. Praveen Maurya</p>
+      </div>
+    </div>
+
+    <h1 class="text-center mb-5">CPU Pipeline Performance Dashboard</h1>
+
+    <div class="row">
+      <!-- Key Metrics -->
+      <div class="col-md-3">
+        <div class="metric-card bg-light">
+          <h5>CPI: <span id="cpi-value">1.0</span></h5>
+          <p class="text-muted">Cycles per Instruction</p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="metric-card bg-light">
+          <h5>IPC: <span id="ipc-value">1.0</span></h5>
+          <p class="text-muted">Instructions per Cycle</p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="metric-card bg-light">
+          <h5>Stalls: <span id="stalls-value">0</span></h5>
+          <p class="text-muted">Pipeline Stalls</p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="metric-card bg-light">
+          <h5>Utilization: <span id="util-value">0</span>%</h5>
+          <p class="text-muted">Overall Pipeline</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline Visualization -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <h4>Pipeline Stage Utilization</h4>
+        <div class="pipeline-visual" id="pipeline-visual"></div>
+      </div>
+    </div>
+
+    <div class="row mt-4">
+      <!-- Stage Utilization Chart -->
+      <div class="col-md-6">
+        <div class="metric-card">
+          <h4>Stage Utilization Breakdown</h4>
+          <canvas id="stageChart" class="stage-utilization"></canvas>
+        </div>
+      </div>
+
+      <!-- Stall Reasons -->
+      <div class="col-md-6">
+        <div class="metric-card">
+          <h4>Stall Reasons</h4>
+          <canvas id="stallChart" class="stage-utilization"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historical Trends -->
+    <div class="row mt-4">
+      <div class="col-12">
+        <div class="metric-card">
+          <h4>Historical Performance</h4>
+          <canvas id="historicalChart" class="historical-chart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden JSON for stages -->
+  <script id="stages-data" type="application/json">
+    {{ stages|tojson|safe }}
+  </script>
+
+  <!-- Dashboard Logic -->
+  <script>
+    const stageCtx = document.getElementById('stageChart').getContext('2d');
+    const stallCtx = document.getElementById('stallChart').getContext('2d');
+    const historicalCtx = document.getElementById('historicalChart').getContext('2d');
+
+    const stageChart = new Chart(stageCtx, {
+      type: 'bar',
+      data: { labels: [], datasets: [{
+        label: 'Utilization %',
+        data: [],
+        backgroundColor: 'rgba(54, 162, 235, 0.7)'
+      }]},
+      options: {
+        responsive: true,
+        scales: {
+          y: { beginAtZero: true, max: 100 }
+        }
+      }
+    });
+
+    const stallChart = new Chart(stallCtx, {
+      type: 'pie',
+      data: {
+        labels: ['Branch Mispredict', 'Cache Misses', 'Other Stalls'],
+        datasets: [{
+          data: [0, 0, 0],
+          backgroundColor: [
+            'rgba(255, 99, 132, 0.7)',
+            'rgba(255, 206, 86, 0.7)',
+            'rgba(75, 192, 192, 0.7)'
+          ]
+        }]
+      },
+      options: { responsive: true }
+    });
+
+    const historicalChart = new Chart(historicalCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'CPI',
+            data: [],
+            borderColor: 'rgba(255, 99, 132, 1)',
+            tension: 0.1,
+            yAxisID: 'y'
+          },
+          {
+            label: 'IPC',
+            data: [],
+            borderColor: 'rgba(54, 162, 235, 1)',
+            tension: 0.1,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Utilization %',
+            data: [],
+            borderColor: 'rgba(75, 192, 192, 1)',
+            tension: 0.1,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            min: 0,
+            max: 100,
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+
+    function initPipelineVisualization(stages) {
+      const container = document.getElementById('pipeline-visual');
+      container.innerHTML = '';
+
+      stages.forEach(stage => {
+        const stageEl = document.createElement('div');
+        stageEl.className = 'pipeline-stage';
+        stageEl.id = `stage-${stage.toLowerCase()}`;
+
+        const fillEl = document.createElement('div');
+        fillEl.className = 'pipeline-fill';
+        fillEl.style.height = '0%';
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'stage-label';
+        labelEl.textContent = stage;
+
+        stageEl.appendChild(fillEl);
+        stageEl.appendChild(labelEl);
+        container.appendChild(stageEl);
+      });
+    }
+
+    function updateDashboard() {
+      fetch('/data')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('cpi-value').textContent = data.metrics.CPI.toFixed(2);
+          document.getElementById('ipc-value').textContent = data.metrics.IPC.toFixed(2);
+          document.getElementById('stalls-value').textContent = data.metrics.Stalls;
+          document.getElementById('util-value').textContent =
+            Math.round(data.historical.Utilization.slice(-1)[0] * 100);
+
+          stageChart.data.labels = Object.keys(data.utilization);
+          stageChart.data.datasets[0].data = Object.values(data.utilization).map(v => v * 100);
+          stageChart.update();
+
+          stallChart.data.datasets[0].data = [
+            data.metrics.BranchMispredict,
+            data.metrics.CacheMisses,
+            Math.max(0, data.metrics.Stalls - data.metrics.BranchMispredict - data.metrics.CacheMisses)
+          ];
+          stallChart.update();
+
+          const timeLabels = Array.from({ length: data.historical.CPI.length }, (_, i) => i);
+          historicalChart.data.labels = timeLabels;
+          historicalChart.data.datasets[0].data = data.historical.CPI;
+          historicalChart.data.datasets[1].data = data.historical.IPC;
+          historicalChart.data.datasets[2].data = data.historical.Utilization.map(v => v * 100);
+          historicalChart.update();
+
+          Object.entries(data.utilization).forEach(([stage, util]) => {
+            const fillEl = document.querySelector(`#stage-${stage.toLowerCase()} .pipeline-fill`);
+            if (fillEl) {
+              fillEl.style.height = `${util * 100}%`;
+              const hue = (1 - util) * 120;
+              fillEl.style.backgroundColor = `hsl(${hue}, 70%, 50%)`;
+            }
+          });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const stagesRaw = document.getElementById('stages-data').textContent;
+      const stages = JSON.parse(stagesRaw);
+      initPipelineVisualization(stages);
+      updateDashboard();
+      setInterval(updateDashboard, 1000);
+    });
+  </script>
+</body>
+</html>

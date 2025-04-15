@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify
 import random
 from collections import deque
 import os
+
 app = Flask(__name__)
 
 # Simulated pipeline data
@@ -23,13 +24,13 @@ historical_data = {
 def simulate_pipeline():
     """Simulate pipeline performance data"""
     for stage in pipeline_stages:
-        pipeline_utilization[stage] = random.uniform(0.7, 0.95)
-    
-    performance_metrics["CPI"] = random.uniform(0.8, 1.5)
-    performance_metrics["IPC"] = 1 / performance_metrics["CPI"]
-    performance_metrics["Stalls"] = random.randint(0, 20)
-    performance_metrics["BranchMispredict"] = random.randint(0, 10)
-    performance_metrics["CacheMisses"] = random.randint(0, 15)
+        pipeline_utilization[stage] = random.uniform(0.5, 0.98)  # more variation
+
+    performance_metrics["CPI"] = round(random.uniform(0.6, 2.5), 2)
+    performance_metrics["IPC"] = round(1 / performance_metrics["CPI"], 2)
+    performance_metrics["Stalls"] = random.randint(5, 50)
+    performance_metrics["BranchMispredict"] = random.randint(2, 20)
+    performance_metrics["CacheMisses"] = random.randint(5, 30)
 
     historical_data["CPI"].append(performance_metrics["CPI"])
     historical_data["IPC"].append(performance_metrics["IPC"])
@@ -50,8 +51,6 @@ def index():
 @app.route('/data')
 def get_data():
     return jsonify(simulate_pipeline())
-
-
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))  # Use PORT env variable or fallback to 5000
